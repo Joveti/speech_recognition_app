@@ -21,7 +21,6 @@ pillow==11.3.0
 pocketsphinx==5.0.4
 protobuf==6.31.1
 pyarrow==21.0.0
-PyAudio==0.2.14
 pycparser==2.22
 pydeck==0.9.1
 python-dateutil==2.9.0.post0
