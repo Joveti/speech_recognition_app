@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env1/
+ENV/
+*.env
+
+# Streamlit Cache
+.streamlit/
+
+# Transcripts & temp output
+transcripts/
+
+# OS files
+.DS_Store
+Thumbs.db
