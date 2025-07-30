@@ -1,32 +1,15 @@
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
+import av
 import speech_recognition as sr
-import datetime
+import numpy as np
 import os
+import datetime
+import tempfile
 
 # Ensure transcripts folder exists
 TRANSCRIPT_DIR = "transcripts"
 os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
-
-def transcribe_speech(api_choice, language):
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.info("Speak now...")
-        audio_text = r.listen(source)
-        st.info("Transcribing...")
-
-        try:
-            if api_choice == "Google":
-                return r.recognize_google(audio_text, language=language)
-            elif api_choice == "Sphinx":
-                return r.recognize_sphinx(audio_text)
-            else:
-                return "Selected API is not supported."
-        except sr.UnknownValueError:
-            return "Could not understand the audio."
-        except sr.RequestError as e:
-            return f"API request failed: {e}"
-        except Exception as e:
-            return f"Unexpected error: {e}"
 
 def save_transcription(text):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -35,30 +18,51 @@ def save_transcription(text):
         f.write(text)
     return filename
 
+# Custom AudioProcessor using streamlit-webrtc
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.recognizer = sr.Recognizer()
+        self.transcription = ""
+
+    def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
+        audio = frame.to_ndarray().flatten()
+        sample_rate = frame.sample_rate
+
+        # Write raw audio to WAV temp file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            import soundfile as sf
+            sf.write(f.name, audio, sample_rate)
+            f.flush()
+            try:
+                with sr.AudioFile(f.name) as source:
+                    audio_data = self.recognizer.record(source)
+                    text = self.recognizer.recognize_google(audio_data)
+                    self.transcription += text + " "
+            except sr.UnknownValueError:
+                pass
+            except Exception as e:
+                self.transcription += f"[Error: {e}] "
+
+        return frame
+
 def main():
-    st.title("🎤 Speech Recognition App")
-    st.write("Select options and click to start recording:")
+    st.title("🎤 Browser-Based Speech Recognition")
+    st.write("This version works on Streamlit Cloud using your browser's mic.")
 
-    api_choice = st.selectbox("Speech Recognition API", ["Google", "Sphinx"])
-    language = st.text_input("Language Code (e.g., 'en-US', 'sw', 'fr')", value="en-US")
-    if "recording" not in st.session_state:
-        st.session_state.recording = False
+    ctx = webrtc_streamer(
+        key="speech",
+        mode=WebRtcMode.SENDONLY,
+        audio_processor_factory=AudioProcessor,
+        media_stream_constraints={"audio": True, "video": False},
+        async_processing=True,
+    )
 
-    # Pause / Resume Buttons
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("Start Recording"):
-            st.session_state.recording = True
-    with col2:
-        if st.button("Pause"):
-            st.session_state.recording = False
-
-    if st.session_state.recording:
-        transcription = transcribe_speech(api_choice, language)
-        st.write("Transcription:", transcription)
+    if ctx.audio_processor:
+        st.subheader("Live Transcription")
+        st.write(ctx.audio_processor.transcription)
 
         if st.button("💾 Save Transcription"):
-            filename = save_transcription(transcription)
+            filename = save_transcription(ctx.audio_processor.transcription)
             st.success(f"Saved to: {filename}")
 
 if __name__ == "__main__":
