@@ -21,18 +21,10 @@ class AudioProcessor(AudioProcessorBase):
         self.audio_chunks.append(audio)
         return frame
 
-def transcribe_speech(api_choice, language):
+def transcribe_speech(api_choice, language, ctx):
     r = sr.Recognizer()
-    
-    ctx = webrtc_streamer(
-        key="speech",
-        mode=WebRtcMode.SENDONLY,
-        audio_processor_factory=AudioProcessor,
-        media_stream_constraints={"audio": True, "video": False},
-        async_processing=False,
-    )
 
-    if ctx.audio_processor and st.button("Transcribe"):
+    if ctx.audio_processor:
         audio_data = np.concatenate(ctx.audio_processor.audio_chunks).astype(np.float32)
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
@@ -66,9 +58,18 @@ def main():
 
     api_choice = st.selectbox("Speech Recognition API", ["Google", "Sphinx"])
     language = st.text_input("Language Code (e.g., 'en-US', 'sw', 'fr')", value="en-US")
-    
+
     if "recording" not in st.session_state:
         st.session_state.recording = False
+
+    # WebRTC Audio Stream
+    ctx = webrtc_streamer(
+        key="speech",
+        mode=WebRtcMode.SENDONLY,
+        audio_processor_factory=AudioProcessor,
+        media_stream_constraints={"audio": True, "video": False},
+        async_processing=False,
+    )
 
     # Pause / Resume Buttons
     col1, col2 = st.columns([1, 1])
@@ -79,14 +80,15 @@ def main():
         if st.button("Pause"):
             st.session_state.recording = False
 
-    if st.session_state.recording:
-        transcription = transcribe_speech(api_choice, language)
-        if transcription:
-            st.write("Transcription:", transcription)
+    if st.session_state.recording and ctx.audio_processor:
+        if st.button("Transcribe"):
+            transcription = transcribe_speech(api_choice, language, ctx)
+            if transcription:
+                st.write("Transcription:", transcription)
 
-            if st.button("💾 Save Transcription"):
-                filename = save_transcription(transcription)
-                st.success(f"Saved to: {filename}")
+                if st.button("💾 Save Transcription"):
+                    filename = save_transcription(transcription)
+                    st.success(f"Saved to: {filename}")
 
 if __name__ == "__main__":
     main()
